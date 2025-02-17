@@ -140,6 +140,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DataModel\SysAODBModel.cs" />
     <Compile Include="DataModel\ClientShortModel.cs" />
     <Compile Include="DataModel\ColumnBase.cs" />
     <Compile Include="DataModel\DBBOModel.cs" />
@@ -150,6 +151,11 @@
     <Compile Include="DataModel\GetOrderModel.cs" />
     <Compile Include="DataModel\OrderCheckModel.cs" />
     <Compile Include="DataModel\SyncDataModel.cs" />
+    <Compile Include="DataModel\SysBRIDGEModel.cs" />
+    <Compile Include="DataModel\SysDBFOModel.cs" />
+    <Compile Include="DataModel\SysLedgerModel.cs" />
+    <Compile Include="DataModel\SysOTDBModel.cs" />
+    <Compile Include="DataModel\SysRTDBModel.cs" />
     <Compile Include="DataSql\SqlWrapper.cs" />
     <Compile Include="DataSql\ConnectionStr.cs" />
     <Compile Include="Function\FunctionContext.cs" />
@@ -223,6 +229,5 @@
   <ItemGroup>
     <WCFMetadata Include="Connected Services\" />
   </ItemGroup>
-  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

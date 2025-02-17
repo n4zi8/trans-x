@@ -7,6 +7,7 @@ using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Reflection;
 //using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using WA_Send_API.DataModel;
 using WA_Send_API.DataSql;
@@ -26,16 +27,26 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Collections;
 using System.Threading;
+using System.Media;
+using System.Threading.Tasks;
 
 namespace WA_Send_API.Function
 {
+
     public class FunctionContext
     {
         protected ILogger[] _logger;
         protected TimeStampBuffer _CCtimeStampBuffer;
         protected DateTime _currentDateTime;
 
-        private SqlWrapper _fioSqlReader, _dbCompareSqlReader, _orderStatusPreopODBCReader, _orderStatusOpenODBCReader, _clientShortODBCReader, _getOrderODBCReader;
+        private SqlWrapper _fioSqlReader, _dbCompareSqlReader, _orderStatusPreopODBCReader, _orderStatusOpenODBCReader, _clientShortODBCReader, _getOrderODBCReader, _getHoliday;
+
+        private SqlWrapper _dbCompareSqlSysAODBReader,
+                           _dbCompareSqlSysBridgeReader,
+                           _dbCompareSqlSysOTDBReader,
+                           _dbCompareSqlSysRTDBReader,
+                           _dbCompareSqlSysLedgerReader,
+                           _dbCompareSqlSysDBFOReader;
 
         protected Queue<ColumnBase> _fioDataQueue, _fioDataFailedQueue;
         protected Queue<LogBase> _logQueue;
@@ -46,11 +57,12 @@ namespace WA_Send_API.Function
         protected long QueueCount, FioCount;
         protected bool _Rejected, _Approved;
         protected object _timestampLock = new object();
+
         protected string _setInOut, _querySetPreop, _querySetOpen, _querySetShort, _querySetOrder, _querySyncData, _querySetDBCompare, _formattedDateTime, _mobileStr;
         protected string _ClientID, _Amount, _InOut, _FioNID, _ClientName, _ApproveTime, _RejectTime, _ClientIDShort, _StockIDShort, _TotalShort, _TotalOrder, _CountCC, _CountClient, _CountStock;
         protected string _OrderStatusPreop_Open, _OrderStatusPreop_Reject, _OrderstatusOpening_Open, _OrderstatusOpening_Reject;
         protected string _dbBOCountCCTrus, _dbBOCountCSTrus, _dbBOCountClientTrus, _dbBOCountUserTrus, _dbBridgeCountCC, _dbBridgeCountCS, _dbBridgeCountClient, _dbBridgeCountUser, _dbBridgeCountUser2, _dbBridgeCountCC2;
-        protected string _dbBOCountCCS21, _dbBOCountCSS21, _dbBOCountClientS21, _dbBOCountUserS21, _dbFOCountCC, _dbFOCountCS, _dbFOCountClient, _dbFOCountUser;
+        protected string _dbBOCountCCS21, _dbBOCountCSS21, _dbBOCountClientS21, _dbBOCountUserS21, _dbFOCountCC, _dbFOCountCS, _dbFOCountClient, _dbFOCountUser, dbHoliday;
 
 
         private SqlWrapper _dbCompareSqlReaderOuch, _orderStatusPreopODBCReaderOuch, _orderStatusOpenODBCReaderOuch, _clientShortODBCReaderOuch, _getOrderODBCReaderOuch;
@@ -61,8 +73,27 @@ namespace WA_Send_API.Function
         //fatta 2024/12/09 //Added OUCH 
         protected string _ClientIDShortOUCH, _StockIDShortOUCH, _TotalShortOUCH, _TotalOrderOUCH;
 
+        protected string _querySetDBSys,
+                         _querySetDBSysDBFO,
+                         _querySetDBSysLedger,
+                         _querySetDBSysAODB,
+                         _querySetDBSysRTDB,
+                         _querySetDBSysOTDB,
+                         _querySetDBSysDBBridge
+        ;
+
+
+        public string    _ServerAODB,         _InuseAODB,         _FreeAODB,            _SizeAODB,          _PercentageAODB,
+                         _ServerBRIDGE,       _InuseBRIDGE,       _FreeBRIDGE,          _SizeBRIDGE,        _PercentageBRIDGE,
+                         _ServerOTDB,         _InuseOTDB,         _FreeOTDB,            _SizeOTDB,          _PercentageOTDB,
+                         _ServerRTDB,         _InuseRTDB,         _FreeRTDB,            _SizeRTDB,          _PercentageRTDB,
+                         _ServerDBFO,         _InuseDBFO,         _FreeDBFO,            _SizeDBFO,          _PercentageDBFO,
+                         _ServerLEDGER,       _InuseLEDGER,       _FreeLEDGER,          _SizeLEDGER,        _PercentageLEDGER;
+
+        public int sCheckHoliday;
+
         double statusCheckPre, statusCheckPreOUCH;
-        int statusCheck, statusCheckOUCH;
+        int statusCheck, statusCheckOUCH, statusCheckShort;
 
         public FunctionContext()
              : this(null)
@@ -96,12 +127,19 @@ namespace WA_Send_API.Function
             _clientShortODBCReader = new SqlWrapper();
             _getOrderODBCReader = new SqlWrapper();
             _dbCompareSqlReader = new SqlWrapper();
+            _getHoliday = new SqlWrapper();
+            _dbCompareSqlSysDBFOReader  = new SqlWrapper();
+            _dbCompareSqlSysLedgerReader = new SqlWrapper();
+            _dbCompareSqlSysAODBReader = new SqlWrapper();
+            _dbCompareSqlSysRTDBReader = new SqlWrapper();
+            _dbCompareSqlSysOTDBReader = new SqlWrapper();
+            _dbCompareSqlSysBridgeReader = new SqlWrapper();
+
         }
 
         //GetTimeStamp Function
         public void GetDBTimestamp()
         {
-
             lock (_fioSqlReader)
             {
                 try
@@ -111,12 +149,10 @@ namespace WA_Send_API.Function
                     SqlDataReader r = _fioSqlReader.ExecuteReader();
 
                     if (r.HasRows)
-
                         AddLog(LogType.INFO, "Executing Select Data Fundinout");
 
                     while (r.Read())
                     {
-
                         FundInOutModel o = new FundInOutModel();
                         o.ClientID = r["clientidinout"].ToString();
                         o.Amount = double.Parse(r["amount"].ToString());
@@ -131,9 +167,7 @@ namespace WA_Send_API.Function
                         o.Approved = GetBooleanValue(r["approved"].ToString());
 
                         string pattern = "[^a-zA-Z0-9 ]";
-
-
-
+                        
                         _mobileStr = Regex.Replace(o.MobilePhone, pattern, "");
 
                         QueueFundInOutData(o);
@@ -157,21 +191,14 @@ namespace WA_Send_API.Function
                             //GetApi();
                         }
                     }
-
                     this._fiolblQueue.addQueue(QueueCount);
                     //await _restHelper.Post("hsfvXBi91oPj2QHMuY8I", "6285174377897", "120363195609109582", _querySet.ToString());
-
                 }
-
-
-
                 catch (Exception e)
                 {
                     AddLog(LogType.ERROR, e.Message, e.StackTrace);
                 }
-
             }
-
         }
 
         //DB BO Compared
@@ -190,10 +217,6 @@ namespace WA_Send_API.Function
                     while (r.Read())
                     {
                         DBBOModel o = new DBBOModel();
-                        o.CountDBBOCCTrus = r["CountCCTrus"].ToString();
-                        o.CountDBBOCSTrus = r["CountCSTrus"].ToString();
-                        o.CountDBBOClientTrus = r["CountClientTrus"].ToString();
-                        o.CountDBBOUserTrus = r["CountUserTrus"].ToString();
                         o.CountDBBOCCS21 = r["CountCCS21"].ToString();
                         o.CountDBBOCSS21 = r["CountCSS21"].ToString();
                         o.CountDBBOClientS21 = r["CountClientS21"].ToString();
@@ -203,12 +226,7 @@ namespace WA_Send_API.Function
                         System.Threading.Interlocked.Increment(ref QueueCount);
 
                         AddLog(LogType.INFO, "--> Send To WA Unofficial DBBO Trus: ClientCash Count: " + o.CountDBBOCCTrus + " | ClientStock Count: " + o.CountDBBOCSTrus + " | Client Count: " + o.CountDBBOClientTrus + " | User Count: " + o.CountDBBOUserTrus);
-                        AddLog(LogType.INFO, "--> Send To WA Unofficial DBBO S21: ClientCash Count: " + o.CountDBBOCCS21 + " | ClientStock Count: " + o.CountDBBOCSS21 + " | Client Count: " + o.CountDBBOClientS21 + " | User Count: " + o.CountDBBOUserS21);
-
-                        _dbBOCountCCTrus = o.CountDBBOCCTrus;
-                        _dbBOCountCSTrus = o.CountDBBOCSTrus;
-                        _dbBOCountClientTrus = o.CountDBBOClientTrus;
-                        _dbBOCountUserTrus = o.CountDBBOUserTrus;
+                       
                         _dbBOCountCCS21 = o.CountDBBOCCS21;
                         _dbBOCountCSS21 = o.CountDBBOCSS21;
                         _dbBOCountClientS21 = o.CountDBBOClientS21;
@@ -216,10 +234,11 @@ namespace WA_Send_API.Function
 
                         if (o != null)
                         {
-                            GetDBBridge();
+                            //GetDBBridge();
                             GetDBS21();
-                            GetDBBridgeOuch();
-                            GetApiDbCompare();
+                            //GetDBBridgeData();
+                            //GetEarlyData();
+                            //GetApiDbCompare();
                         }
                         else
                         {
@@ -231,51 +250,6 @@ namespace WA_Send_API.Function
                 {
                     AddLog(LogType.ERROR, e.Message, e.StackTrace);
                 }
-            }
-        }
-
-
-        public void GetDBBridge()
-        {
-            lock (_dbCompareSqlReader)
-            {
-                try
-                {
-                    _dbCompareSqlReader.PrepareOdbcStatementDBBridge("select (SELECT COUNT(clientid) CLIENTCASH from CLIENT_CASH where to_char(Date_,'yyyymmdd') = to_char(sysdate,'yyyymmdd')) CountClientcash,  (SELECT COUNT(stockid) CLIENTSTOCK from CLIENT_STOCK where to_char(Date_,'yyyymmdd') = to_char(sysdate,'yyyymmdd')) countClientStock,  (SELECT COUNT(clientid) TOTALCLIENT from Client) countclient, (SELECT COUNT(userid) TOTALUSER from USER_) countuser, (SELECT * from COUNT_CLIENT ) CountUserOuch, (select count(clientid) from(select a.clientid, a.clientname from client a left join client_cash b on a.clientid = b.clientid)) CountCashUserOuch from dual");
-                    OdbcDataReader r = _dbCompareSqlReader.ExecuteReaderODBCBridge();
-
-
-                    if (r.HasRows)
-                        AddLog(LogType.INFO, "Executing Select Data Dount DBBridge");
-
-                    while (r.Read())
-                    {
-                        DBBridgeModel o = new DBBridgeModel();
-                        o.CountDBBridgeCC = r["CountClientCash"].ToString();
-                        o.CountDBBridgeCS = r["CountClientStock"].ToString();
-                        o.CountDBBridgeClient = r["CountClient"].ToString();
-                        o.CountDBBridgeUser = r["CountUser"].ToString();
-                        o.CountDBBridgeUser2 = r["CountUserOuch"].ToString();
-                        o.CountDBBridgeCC2 = r["CountCashUserOuch"].ToString();
-
-                        QueueFundInOutData(o);
-                        System.Threading.Interlocked.Increment(ref QueueCount);
-
-                        AddLog(LogType.INFO, "--> Send To WA Unofficial DBBridge: ClientCash Count: " + o.CountDBBridgeCC + " | ClientStock Count: " + o.CountDBBridgeCS + " | Client Count: " + o.CountDBBridgeClient + " | User Count: " + o.CountDBBridgeUser);
-
-                        _dbBridgeCountCC = o.CountDBBridgeCC.ToString();
-                        _dbBridgeCountCS = o.CountDBBridgeCS.ToString();
-                        _dbBridgeCountClient = o.CountDBBridgeClient.ToString();
-                        _dbBridgeCountUser = o.CountDBBridgeUser.ToString();
-                        _dbBridgeCountUser2 = o.CountDBBridgeUser2.ToString();
-                        _dbBridgeCountCC2 = o.CountDBBridgeCC2.ToString();
-                    }
-                }
-                catch (Exception e)
-                {
-                    AddLog(LogType.ERROR, e.Message, e.StackTrace);
-                }
-
             }
         }
 
@@ -319,6 +293,7 @@ namespace WA_Send_API.Function
 
 
         //All TIBERO Request
+       /**
         public void GetOrderStatusPreop()
         {
             lock (_orderStatusPreopODBCReader)
@@ -327,25 +302,25 @@ namespace WA_Send_API.Function
                 {
                     _orderStatusPreopODBCReader.PrepareOdbcStatementTibero("select (SELECT COUNT(orderstatus) FROM TEXCHANGEMARKETORDER where orderstatus = 0 and to_char(stime, 'hh24:MI:ss') >= '08:45:00') Orderstatus_Preop_Open,  (SELECT COUNT(orderstatus)   FROM TEXCHANGEMARKETORDER where orderstatus = 8 and to_char(stime, 'hh24:MI:ss') >= '08:45:00') Orderstatus_Preop_Reject from dual");
                     OdbcDataReader r = _orderStatusPreopODBCReader.ExecuteReaderODBC();
-
+        
                     if (r.HasRows)
                         AddLog(LogType.INFO, "Executing Select Data OrderStatusOpen");
-
+        
                     while (r.Read())
                     {
                         OrderCheckModel o = new OrderCheckModel();
                         o.Orderstatus_Preop_Open = r["Orderstatus_Preop_Open"].ToString();
                         o.Orderstatus_Preop_Reject = r["Orderstatus_Preop_Reject"].ToString();
                         //MessageBox.Show(o.Orderstatus);
-
+        
                         QueueFundInOutData(o);
                         System.Threading.Interlocked.Increment(ref QueueCount);
-
+        
                         AddLog(LogType.INFO, "--> Send To WA Open Status Count: " + o.Orderstatus_Preop_Open + " Rows Open | " + o.Orderstatus_Preop_Reject + " Rows Rejected");
-
+        
                         _OrderStatusPreop_Open = o.Orderstatus_Preop_Open.ToString();
                         _OrderStatusPreop_Reject = o.Orderstatus_Preop_Reject.ToString();
-
+        
                         if (o != null)
                         {
                             statusCheckPre = double.Parse(_OrderStatusPreop_Open);
@@ -360,7 +335,7 @@ namespace WA_Send_API.Function
                 {
                     AddLog(LogType.ERROR, e.Message, e.StackTrace);
                 }
-
+        
             }
             
         }
@@ -373,25 +348,25 @@ namespace WA_Send_API.Function
                 {
                     _orderStatusOpenODBCReader.PrepareOdbcStatementTibero("select (SELECT COUNT(orderstatus)  FROM TEXCHANGEMARKETORDER where orderstatus is null and to_char(stime, 'hh24:MI:ss') >= '09:00:00')  Orderstatus_Opening_Open,  (SELECT COUNT(orderstatus)  FROM TEXCHANGEMARKETORDER where orderstatus = 8 and to_char(stime, 'hh24:MI:ss') >= '09:00:00')  Orderstatus_Opening_Reject from dual");
                     OdbcDataReader r = _orderStatusOpenODBCReader.ExecuteReaderODBC();
-
+        
                     if (r.HasRows)
                         AddLog(LogType.INFO, "Executing Select Data OrderStatusOpen");
-
+        
                     while (r.Read())
                     {
                         OrderCheckModel o = new OrderCheckModel();
                         o.Orderstatus_Opening_Open = r["Orderstatus_Opening_Open"].ToString();
                         o.Orderstatus_Opening_Reject = r["Orderstatus_Opening_Reject"].ToString();
                         //MessageBox.Show(o.Orderstatus_Opening_Open + " - " + o.Orderstatus_Opening_Reject);
-
+        
                         QueueFundInOutData(o);
                         System.Threading.Interlocked.Increment(ref QueueCount);
-
+        
                         AddLog(LogType.INFO, "--> Send To WA Basket Status Count: " + o.Orderstatus_Opening_Open + " Rows Open | " + o.Orderstatus_Opening_Reject + " Rows Rejected");
-
+        
                         _OrderstatusOpening_Open = o.Orderstatus_Opening_Open.ToString();
                         _OrderstatusOpening_Reject = o.Orderstatus_Opening_Reject.ToString();
-
+        
                         if (o != null)
                         {
                             statusCheck = int.Parse(_OrderstatusOpening_Open);
@@ -418,12 +393,12 @@ namespace WA_Send_API.Function
                 {
                     _clientShortODBCReader.PrepareOdbcStatementTibero("select y.custid CUSTID, y.stockcode STOCKCODE, y.ovol, y.rvol, y.tvol, y.ovol+y.tvol-y.rvol short from (select x.custid, x.stockcode, sum(x.volume) ovol, sum(x.working) rvol, sum( x.trade) tvol FROM (select custid, stockcode, volume, 0 working, 0 trade from tcustomerstockbalance UNION ALL SELECT custid, stockcode ,0 volume, case when bs<2 then 0 else 1 end * coalesce(rvolume, ovolume)  working , case when bs<2 then 1 else -1 end * coalesce(tvolume,0) trade from TEXCHANGEMARKETORDER  where coalesce(orderstatus,0)<>5) x group by x.custid, x.stockcode) y where  y.ovol+y.tvol-y.rvol<0");
                     OdbcDataReader r = _clientShortODBCReader.ExecuteReaderODBC();
-
+        
                     if (r.HasRows)
                         AddLog(LogType.INFO, "Executing Select Data Short Client");
                     else
                         AddLog(LogType.INFO, "No Data Short Client");
-
+        
                     while (r.Read())
                     {
                         ClientShortModel o = new ClientShortModel();
@@ -431,16 +406,16 @@ namespace WA_Send_API.Function
                         o.StockCode = r["STOCKCODE"].ToString();
                         o.Short = r["SHORT"].ToString();
                         //MessageBox.Show(o.Orderstatus);
-
+        
                         QueueFundInOutData(o);
                         System.Threading.Interlocked.Increment(ref QueueCount);
-
+        
                         AddLog(LogType.INFO, "--> Send To WA Client Short: ClientID = " + o.CustID + " | StockID = " + o.StockCode + " | Short = " + o.Short);
-
+        
                         _ClientIDShort = o.CustID.ToString();
                         _StockIDShort = o.StockCode.ToString();
                         _TotalShort = o.Short;
-
+        
                         if (o != null)
                         {
                             GetApiShort();
@@ -466,23 +441,23 @@ namespace WA_Send_API.Function
                 {
                     _getOrderODBCReader.PrepareOdbcStatementTibero("Select count(orderid) Total_Order from texchangemarketorder ");
                     OdbcDataReader r = _getOrderODBCReader.ExecuteReaderODBC();
-
+        
                     if (r.HasRows)
                         AddLog(LogType.INFO, "Executing Select Data Short Client");
                     else
                         AddLog(LogType.INFO, "No Data Short Client");
-
+        
                     while (r.Read())
                     {
                         GetOrderModel o = new GetOrderModel();
                         o.Total_Order = r["Total_Order"].ToString();
-
+        
                         QueueFundInOutData(o);
                         System.Threading.Interlocked.Increment(ref QueueCount);
-
+        
                         AddLog(LogType.INFO, "--> Send To WA Total Order: " + o.Total_Order);
                         _TotalOrder = o.Total_Order.ToString();
-
+        
                         if (o != null)
                         {
                             //GetApiOrderCheck();
@@ -491,9 +466,9 @@ namespace WA_Send_API.Function
                         {
                             MessageBox.Show("Error GetApiShort");
                         }
-
+        
                     }
-
+        
                 }
                 catch (Exception e)
                 {
@@ -501,7 +476,7 @@ namespace WA_Send_API.Function
                 }
             }
         }
-
+        **/
         //===================================================================================================================================================================//
         //                                                                                   OUCH                                                                            //
         //===================================================================================================================================================================//
@@ -592,34 +567,70 @@ namespace WA_Send_API.Function
             {
                 try
                 {
-                    _clientShortODBCReader.PrepareOdbcStatementDBOUCH("SELECT X.accountcode as CUSTID, X.productcode as STOCKCODE, sum(X.OpenVol) OpenQty, sum(X.tradevolume) TradedQty, sum(NVL(X.WorkingSell,0)) WorkingSell, sum(X.openvol) + sum(X.tradevolume) - sum(NVL(X.WorkingSell,0)) as SHORT FROM ( SELECT accountcode, productcode, NVL(volume,0) as OpenVol, settled , 0 as WorkingSell, 0 as tradevolume FROM customersecurityposition UNION ALL SELECT A.accountcode, A.productcode, 0 as OpenVol, 0 as settled,  sum(A.WorkingSell) as WorkingSell, sum(A.tradevolume) as tradevolume FROM  ( SELECT accountcode, productcode, case when Side not in ('B','M') then NVL(remainvolume,ordervolume) else 0 end WorkingSell, case when Side in ('B','M') then 1 else -1 end * NVL(tradevolume,0) as tradevolume FROM tborder )  A  GROUP BY A.accountcode, A.productcode  ) X GROUP BY X.accountcode, X.productcode HAVING sum(X.openvol)+sum(X.tradevolume) - sum(NVL(X.WorkingSell,0))<0  ");
+                    _clientShortODBCReader.PrepareOdbcStatementDBOUCH(
+                        "SELECT X.accountcode AS CUSTID, X.productcode AS STOCKCODE, " +
+                        "SUM(X.OpenVol) AS OpenQty, SUM(X.tradevolume) AS TradedQty, " +
+                        "SUM(COALESCE(X.WorkingSell,0)) AS WorkingSell, " +
+                        "SUM(X.openvol) + SUM(X.tradevolume) - SUM(COALESCE(X.WorkingSell,0)) AS SHORT " +
+                        "FROM (" +
+                        "    SELECT accountcode, productcode, COALESCE(volume,0) AS OpenVol, settled, " +
+                        "    0 AS WorkingSell, 0 AS tradevolume FROM customersecurityposition " +
+                        "    UNION ALL " +
+                        "    SELECT A.accountcode, A.productcode, 0 AS OpenVol, 0 AS settled, " +
+                        "    SUM(A.WorkingSell) AS WorkingSell, SUM(A.tradevolume) AS tradevolume " +
+                        "    FROM (" +
+                        "        SELECT accountcode, productcode, " +
+                        "        CASE WHEN Side NOT IN ('B','M') THEN COALESCE(remainvolume,ordervolume) ELSE 0 END AS WorkingSell, " +
+                        "        CASE WHEN Side IN ('B','M') THEN 1 ELSE -1 END * COALESCE(tradevolume,0) AS tradevolume " +
+                        "        FROM tborder" +
+                        "    ) A GROUP BY A.accountcode, A.productcode " +
+                        ") X GROUP BY X.accountcode, X.productcode " +
+                        "HAVING SUM(X.openvol) + SUM(X.tradevolume) - SUM(COALESCE(X.WorkingSell,0)) < 0"
+                    );
                     OdbcDataReader r = _clientShortODBCReader.ExecuteReaderODBCOUCH();
 
                     if (r.HasRows)
-                        AddLog(LogType.INFO, "Excuting Select Data Short Client");
+                    {
+                        AddLog(LogType.INFO, "Executing Select Data Short Client");
+                        statusCheckShort = 1;
+                    }
                     else
+                    {
                         AddLog(LogType.INFO, "No Data Short Client");
+                        statusCheckShort = 0;
+                    }
 
                     while (r.Read())
                     {
-                        ClientShortModel o = new ClientShortModel();
-                        o.CustID = r["CUSTID"].ToString();
-                        o.StockCode = r["STOCKCODE"].ToString();
-                        o.Short = r["SHORT"].ToString();
+                        ClientShortModel o = new ClientShortModel
+                        {
+                            CustID = r["CUSTID"].ToString().Trim(),
+                            StockCode = r["STOCKCODE"].ToString().Trim(),
+                            Short = r["SHORT"].ToString().Trim()
+                        };
 
                         QueueFundInOutData(o);
                         System.Threading.Interlocked.Increment(ref QueueCount);
 
-                        AddLog(LogType.INFO, "--> Send To WA Client Short: ClientID = " + o.CustID + " | StockID = " + o.StockCode + " | Short = " + o.Short);
+                        // Sanitize values before logging
+                        string sanitizedCustID = Regex.Replace(o.CustID, @"[\\/:*?""<>|]", "_");
+                        string sanitizedStockCode = Regex.Replace(o.StockCode, @"[\\/:*?""<>|]", "_");
+                        string sanitizedShort = Regex.Replace(o.Short, @"[\\/:*?""<>|]", "_");
 
-                        _ClientIDShortOUCH = o.CustID.ToString();
-                        _StockIDShortOUCH = o.StockCode.ToString();
+                        AddLog(LogType.INFO, $"--> Send To WA Client Short: ClientID = {sanitizedCustID} | StockID = {sanitizedStockCode} | Short = {sanitizedShort}");
+
+                        _ClientIDShortOUCH = o.CustID;
+                        _StockIDShortOUCH = o.StockCode;
                         _TotalShortOUCH = o.Short;
 
-                        if (o != null)
-                            GetApiShortOUCH();
+                        if (!string.IsNullOrEmpty(o.CustID) && !string.IsNullOrEmpty(o.StockCode) && !string.IsNullOrEmpty(o.Short))
+                        {
+                           // GetApiShortOUCH();
+                        }
                         else
-                            MessageBox.Show("Error GetApiShort");
+                        {
+                            MessageBox.Show("Error: Null value detected in API call");
+                        }
                     }
                 }
                 catch (Exception e)
@@ -639,9 +650,9 @@ namespace WA_Send_API.Function
                     OdbcDataReader r = _getOrderODBCReader.ExecuteReaderODBCOUCH();
 
                     if (r.HasRows)
-                        AddLog(LogType.INFO, "Executing Select Data Short Client");
+                        AddLog(LogType.INFO, "Executing Select Data Order Ouch");
                     else
-                        AddLog(LogType.INFO, "No Data Short Client");
+                        AddLog(LogType.INFO, "No Data order ouch check your DB");
 
                     while (r.Read())
                     {
@@ -670,6 +681,81 @@ namespace WA_Send_API.Function
             }
         }
 
+        public void GetDBBridgeData()
+        {
+            lock (_dbCompareSqlReader)
+            {
+                try
+                {
+                    _dbCompareSqlReader.PrepareOdbcStatementDBBridge("SELECT (SELECT COUNT(*) FROM client_cash) as CountClientCash, (SELECT COUNT(*) FROM client_stock) as CountClientStock, (SELECT COUNT(*) FROM Client) as CountClient, (SELECT COUNT(*) from User_ ) as CountUser from DUAL");
+                    OdbcDataReader r = _dbCompareSqlReader.ExecuteReaderODBCBridge();
+        
+                    if (r.HasRows)
+                        AddLog(LogType.INFO, "Executing Select Data Count from DBBDRIDGE");
+        
+                    while (r.Read())
+                    {
+                        DBBOModel o = new DBBOModel();
+                        o.CountDBBOCCTrus = r["CountClientCash"].ToString();
+                        o.CountDBBOCSTrus = r["CountClientStock"].ToString();
+                        o.CountDBBOClientTrus = r["CountClient"].ToString();
+                        o.CountDBBOUserTrus = r["CountUser"].ToString();
+        
+                        QueueFundInOutData(o);
+                        System.Threading.Interlocked.Increment(ref QueueCount);
+                        AddLog(LogType.INFO, "--> Send To WA Unofficial DBBridge OUCH: ClientCash Count: " + o.CountDBBOCCTrus + " | ClientStock Count: " + o.CountDBBOCSTrus + " | Client Count: " + o.CountDBBOClientTrus + " | User Count: " + o.CountDBBOUserTrus + "  end of");
+
+                        _dbBridgeCountCCOUCH     = o.CountDBBOCCTrus.ToString();
+                        _dbBridgeCountCSOUCH     = o.CountDBBOCSTrus.ToString();
+                        _dbBridgeCountClientOUCH = o.CountDBBOClientTrus.ToString();
+                        _dbBridgeCountUserOUCH   = o.CountDBBOUserTrus.ToString();
+
+
+                    }
+                }
+                catch (Exception e) 
+                {
+                    AddLog(LogType.ERROR, e.Message, e.StackTrace);
+                }
+            }
+        }
+
+        public int GetHolidayDate()
+        {
+            lock (_dbCompareSqlReader)
+            {
+                DayOfWeek today = DateTime.Now.DayOfWeek;
+                
+                if (today == DayOfWeek.Saturday)
+                {
+                    AddLog(LogType.INFO, "--> Today is Saturday");
+                    return 0;
+                }
+                else if (today == DayOfWeek.Sunday)
+                {
+                    AddLog(LogType.INFO, "--> Today is Sunday");
+                    return 0;
+                }
+
+                _dbCompareSqlReader.PrepareOdbcStatementDBOUCH("SELECT CASE WHEN COUNT(1) = 0 THEN '1' ELSE '0' END AS HOLIDAYDATE FROM MSHOLIDAY WHERE TO_CHAR(HOLIDAYDATE, 'DD/MM/YYYY') = TO_CHAR(SYSDATE, 'DD/MM/YYYY');");
+                OdbcDataReader r = _dbCompareSqlReader.ExecuteReaderODBCOUCH();
+
+                r.Read();
+                sCheckHoliday = int.Parse(r["HOLIDAYDATE"].ToString());
+
+                if (sCheckHoliday == 0)
+                {
+                    AddLog(LogType.INFO, "--> Today is Holiday");
+                    return 0;
+                }
+                else
+                {
+                    return 1;
+                }
+            }
+        }
+
+        /**
         public void GetDBBridgeOuch()
         {
             lock (_dbCompareSqlReader)
@@ -678,10 +764,10 @@ namespace WA_Send_API.Function
                 {
                     _dbCompareSqlReader.PrepareOdbcStatementDBOUCH("SELECT (SELECT COUNT(*) FROM msaccount) AS CountClientCash, (SELECT COUNT(*) FROM CUSTOMERSECURITYPOSITION) AS CountClientStock, (SELECT COUNT(*) FROM msaccount) AS CountClient, (select count(1) from MSUSER where userid not in ('ARA', 'KOENTO_DEV', 'BAYU_DEV', 'HARTANTO_DEV','IVAN_TRUS', 'REINER_DEV', 'YATNA_DEV', 'RADMIN', 'HARTANTO_TRUS')) as CountUser FROM dual"); //query
                     OdbcDataReader r = _dbCompareSqlReader.ExecuteReaderODBCOUCH();
-
+        
                     if (r.HasRows) 
                         AddLog(LogType.INFO, "Executing Select Data Count DBBRidge");
-
+        
                     while (r.Read())
                     {
                         DBBridgeModel o = new DBBridgeModel();
@@ -689,12 +775,12 @@ namespace WA_Send_API.Function
                         o.CountDBBridgeCS = r["CountClientStock"].ToString();
                         o.CountDBBridgeClient = r["CountClient"].ToString();
                         o.CountDBBridgeUser = r["CountUser"].ToString();
-
+        
                         QueueFundInOutData(o);
                         System.Threading.Interlocked.Increment(ref QueueCount);
-
+        
                         AddLog(LogType.INFO, "--> Send To WA Unofficial DBBridge OUCH: ClientCash Count: " + o.CountDBBridgeCC + " | ClientStock Count: " + o.CountDBBridgeCS + " | Client Count: " + o.CountDBBridgeClient + " | User Count: " + o.CountDBBridgeUser);
-
+        
                         _dbBridgeCountCCOUCH = o.CountDBBridgeCC.ToString();
                         _dbBridgeCountCSOUCH = o.CountDBBridgeCS.ToString();
                         _dbBridgeCountClientOUCH = o.CountDBBridgeClient.ToString();
@@ -707,13 +793,594 @@ namespace WA_Send_API.Function
                 }
             }
         }
+        **/
 
         //===================================================================================================================================================================//
         //                                                                   End of OUCH part                                                                                //
         //===================================================================================================================================================================//
 
 
+        //===================================================================================================================================================================//
+        //                                                                   Start of SYS DB                                                                                //
+        //==================================================================================================================================================================//
+        public void GetSysAodb()
+        {
+            lock (_dbCompareSqlSysAODBReader)
+            {
+                try
+                {
+                    _dbCompareSqlSysAODBReader.PrepareOdbcStatementDBSysAODB(@"
+                SELECT tablespace AS TableSpaceName, 
+                       SUM(disksize) AS DiskSize, 
+                       ROUND((SUM(disksize) - free_mb),2) AS DiskUsage, 
+                       ROUND(free_mb, 2) AS DiskFree,  
+                       ROUND((free_mb / SUM(disksize)) * 100, 2) AS Percentage 
+                FROM (
+                    SELECT tablespace, disksize, free_mb, name_of_file 
+                    FROM (
+                        SELECT SUBSTR(df.tablespace_name,1,15) tablespace,
+                               df.bytes/1024/1024 DiskSize, 
+                               SUM(fs.bytes)/1024/1024 free_MB, 
+                               SUBSTR(df.file_name,1,35) Name_of_File 
+                        FROM dba_data_files df, dba_free_space fs 
+                        WHERE df.tablespace_name = fs.tablespace_name 
+                        GROUP BY SUBSTR(df.tablespace_name,1,15), 
+                                 SUBSTR(df.file_name,1,35), 
+                                 df.bytes
+                    )
+                ) 
+                GROUP BY tablespace, free_mb
+                ORDER BY tablespace asc;
+            ");
 
+                    OdbcDataReader r = _dbCompareSqlSysAODBReader.ExecuteReaderODBCSysAODB();
+
+                    if (r.HasRows)
+                        AddLog(LogType.INFO, "Executing select data count from DB AODB");
+
+                    StringBuilder sb = new StringBuilder();
+                    sb.AppendLine("*AODB*");
+                    sb.AppendLine("---------------------------------------------");
+                    //sb.AppendLine(string.Format("| {0,-15} | {1,-15} | {2,-15} |",
+                    //    "Tablespace", "Usage Disk", "Free Disk"));
+                    //sb.AppendLine("---------------------------------------------");
+
+                    while (r.Read())
+                    {
+                        string checkfreesize = r["DiskFree"]?.ToString().Trim();
+                        string diskSize = "";
+                        string tablespace = "";
+                        string diskUsage = "";
+                        string diskFree = "";
+
+                        double checksize = Convert.ToDouble(checkfreesize);
+                        checkfreesize = "";
+
+                        string checktable = r["TableSpaceName"].ToString();
+                        if (checksize < 500) //for debug only use 5000, for production use 100
+                        {
+                            if (checktable == "SYSSUB" && checksize < 100)
+                            {
+                                tablespace = r["TableSpaceName"].ToString();
+                                diskSize = r["DiskSize"].ToString();
+                                diskUsage = r["DiskUsage"].ToString();
+                                diskFree = r["DiskFree"].ToString();
+                                sb.AppendLine($"*{tablespace}*");
+                                sb.AppendLine($"Size : {diskSize} MB");
+                                sb.AppendLine($"Used Size : {diskUsage} MB");
+                                sb.AppendLine($"*Free Size : {diskFree} MB*");
+                                sb.AppendLine($" ");
+                            }
+                            else
+                            {
+                                tablespace = r["TableSpaceName"].ToString();
+                                diskSize = r["DiskSize"].ToString();
+                                diskUsage = r["DiskUsage"].ToString();
+                                diskFree = r["DiskFree"].ToString();
+                                sb.AppendLine($"*{tablespace}*");
+                                sb.AppendLine($"Size : {diskSize} MB");
+                                sb.AppendLine($"Used Size : {diskUsage} MB");
+                                sb.AppendLine($"*Free Size : {diskFree} MB*");
+                                sb.AppendLine($" ");
+                            }
+                            _querySetDBSysAODB = sb.ToString();
+                        }
+                        else
+                        {
+
+                        }
+                        //string percentage = (r["Percentage"].ToString() + "%").PadLeft(10);
+                    }
+                }
+                catch (Exception e)
+                {
+                    AddLog(LogType.INFO, "Error sys AODB: " + e.Message);
+                }
+            }
+        }
+
+        public void GetSysDBBRIDGE()
+        {
+            lock (_dbCompareSqlSysBridgeReader)
+            {
+                try
+                {
+                    _dbCompareSqlSysBridgeReader.PrepareOdbcStatementDBSysBridge(@"
+                SELECT tablespace AS TableSpaceName, 
+                       SUM(disksize) AS DiskSize, 
+                       ROUND((SUM(disksize) - free_mb),2) AS DiskUsage, 
+                       ROUND(free_mb, 2) AS DiskFree,  
+                       ROUND((free_mb / SUM(disksize)) * 100, 2) AS Percentage 
+                FROM (
+                    SELECT tablespace, disksize, free_mb, name_of_file 
+                    FROM (
+                        SELECT SUBSTR(df.tablespace_name,1,15) tablespace,
+                               df.bytes/1024/1024 DiskSize, 
+                               SUM(fs.bytes)/1024/1024 free_MB, 
+                               SUBSTR(df.file_name,1,35) Name_of_File 
+                        FROM dba_data_files df, dba_free_space fs 
+                        WHERE df.tablespace_name = fs.tablespace_name 
+                        GROUP BY SUBSTR(df.tablespace_name,1,15), 
+                                 SUBSTR(df.file_name,1,35), 
+                                 df.bytes
+                    )
+                ) 
+                GROUP BY tablespace, free_mb
+                ORDER BY tablespace asc;
+            ");
+
+                    OdbcDataReader r = _dbCompareSqlSysBridgeReader.ExecuteReaderODBCSysBridge();
+
+                    if (r.HasRows)
+                        AddLog(LogType.INFO, "Executing select data count from DB BRIDGE");
+
+                    StringBuilder sb = new StringBuilder();
+                    sb.AppendLine("*DBBRIDGE*");
+                    sb.AppendLine("---------------------------------------------");
+                    //sb.AppendLine(string.Format("| {0,-15} | {1,-15} | {2,-15} |",
+                    //    "Tablespace", "Usage Disk", "Free Disk"));
+                    //sb.AppendLine("---------------------------------------------");
+
+                    while (r.Read())
+                    {
+                        string checkfreesize = r["DiskFree"]?.ToString().Trim();
+                        string diskSize = "";
+                        string tablespace = "";
+                        string diskUsage = "";
+                        string diskFree = "";
+
+                        double checksize = Convert.ToDouble(checkfreesize);
+                        checkfreesize = "";
+
+                        string checktable = r["TableSpaceName"].ToString();
+                        if (checksize < 500) //for debug only use 5000, for production use 100
+                        {
+                            if (checktable == "SYSSUB" && checksize < 100)
+                            {
+                                tablespace = r["TableSpaceName"].ToString();
+                                diskSize = r["DiskSize"].ToString();
+                                diskUsage = r["DiskUsage"].ToString();
+                                diskFree = r["DiskFree"].ToString();
+                                sb.AppendLine($"*{tablespace}*");
+                                sb.AppendLine($"Size : {diskSize} MB");
+                                sb.AppendLine($"Used Size : {diskUsage} MB");
+                                sb.AppendLine($"*Free Size : {diskFree} MB*");
+                                sb.AppendLine($" ");
+                            }
+                            else
+                            {
+                                tablespace = r["TableSpaceName"].ToString();
+                                diskSize = r["DiskSize"].ToString();
+                                diskUsage = r["DiskUsage"].ToString();
+                                diskFree = r["DiskFree"].ToString();
+                                sb.AppendLine($"*{tablespace}*");
+                                sb.AppendLine($"Size : {diskSize} MB");
+                                sb.AppendLine($"Used Size : {diskUsage} MB");
+                                sb.AppendLine($"*Free Size : {diskFree} MB*");
+                                sb.AppendLine($" ");
+                            }
+                            _querySetDBSysDBBridge = sb.ToString();
+                        }
+                        else
+                        {
+
+                        }
+                        //string percentage = (r["Percentage"].ToString() + "%").PadLeft(10);
+                    }
+                }
+                catch (Exception e)
+                {
+                    AddLog(LogType.INFO, "Error sys DBBRIDGE: " + e.Message);
+                }
+            }
+        }
+
+        public void GetSysOTDB() 
+        {
+            lock (_dbCompareSqlSysOTDBReader)
+            {
+                try
+                {
+                    _dbCompareSqlSysOTDBReader.PrepareOdbcStatementDBSysOTDB(@"
+                SELECT tablespace AS TableSpaceName, 
+                       SUM(disksize) AS DiskSize, 
+                       ROUND((SUM(disksize) - free_mb),2) AS DiskUsage, 
+                       ROUND(free_mb, 2) AS DiskFree,  
+                       ROUND((free_mb / SUM(disksize)) * 100, 2) AS Percentage 
+                FROM (
+                    SELECT tablespace, disksize, free_mb, name_of_file 
+                    FROM (
+                        SELECT SUBSTR(df.tablespace_name,1,15) tablespace,
+                               df.bytes/1024/1024 DiskSize, 
+                               SUM(fs.bytes)/1024/1024 free_MB, 
+                               SUBSTR(df.file_name,1,35) Name_of_File 
+                        FROM dba_data_files df, dba_free_space fs 
+                        WHERE df.tablespace_name = fs.tablespace_name 
+                        GROUP BY SUBSTR(df.tablespace_name,1,15), 
+                                 SUBSTR(df.file_name,1,35), 
+                                 df.bytes
+                    )
+                ) 
+                GROUP BY tablespace, free_mb
+                ORDER BY tablespace asc;
+            ");
+
+                    OdbcDataReader r = _dbCompareSqlSysOTDBReader.ExecuteReaderODBCSysOTDB();
+
+                    if (r.HasRows)
+                        AddLog(LogType.INFO, "Executing select data count from OTDB");
+
+                    StringBuilder sb = new StringBuilder();
+                    sb.AppendLine("*OTDB*");
+                    sb.AppendLine("---------------------------------------------");
+                    //sb.AppendLine(string.Format("| {0,-15} | {1,-15} | {2,-15} |",
+                    //    "Tablespace", "Usage Disk", "Free Disk"));
+                    //sb.AppendLine("---------------------------------------------");
+
+                    while (r.Read())
+                    {
+                        string checkfreesize = r["DiskFree"]?.ToString().Trim();
+                        string diskSize = "";
+                        string tablespace = "";
+                        string diskUsage = "";
+                        string diskFree = "";
+
+                        double checksize = Convert.ToDouble(checkfreesize);
+                        checkfreesize = "";
+
+                        string checktable = r["TableSpaceName"].ToString();
+                        if (checksize < 500) //for debug only use 5000, for production use 100
+                        {
+                            if (checktable == "SYSSUB" && checksize < 100)
+                            {
+                                tablespace = r["TableSpaceName"].ToString();
+                                diskSize = r["DiskSize"].ToString();
+                                diskUsage = r["DiskUsage"].ToString();
+                                diskFree = r["DiskFree"].ToString();
+                                sb.AppendLine($"*{tablespace}*");
+                                sb.AppendLine($"Size : {diskSize} MB");
+                                sb.AppendLine($"Used Size : {diskUsage} MB");
+                                sb.AppendLine($"*Free Size : {diskFree} MB*");
+                                sb.AppendLine($" ");
+                            }
+                            else
+                            {
+                                tablespace = r["TableSpaceName"].ToString();
+                                diskSize = r["DiskSize"].ToString();
+                                diskUsage = r["DiskUsage"].ToString();
+                                diskFree = r["DiskFree"].ToString();
+                                sb.AppendLine($"*{tablespace}*");
+                                sb.AppendLine($"Size : {diskSize} MB");
+                                sb.AppendLine($"Used Size : {diskUsage} MB");
+                                sb.AppendLine($"*Free Size : {diskFree} MB*");
+                                sb.AppendLine($" ");
+                            }
+                            _querySetDBSysOTDB = sb.ToString();
+                        }
+                        else
+                        {
+
+                        }
+                        //string percentage = (r["Percentage"].ToString() + "%").PadLeft(10);
+                    }
+                }
+                catch (Exception e)
+                {
+                    AddLog(LogType.INFO, "Error sys OTDB: " + e.Message);
+                }
+            }
+        }
+
+        public void GetSysRTDB()
+        {
+            lock (_dbCompareSqlSysRTDBReader)
+            {
+                try
+                {
+                    _dbCompareSqlSysRTDBReader.PrepareOdbcStatementDBSysRTDB(@"
+                SELECT tablespace AS TableSpaceName, 
+                       SUM(disksize) AS DiskSize, 
+                       ROUND((SUM(disksize) - free_mb),2) AS DiskUsage, 
+                       ROUND(free_mb, 2) AS DiskFree,  
+                       ROUND((free_mb / SUM(disksize)) * 100, 2) AS Percentage 
+                FROM (
+                    SELECT tablespace, disksize, free_mb, name_of_file 
+                    FROM (
+                        SELECT SUBSTR(df.tablespace_name,1,15) tablespace,
+                               df.bytes/1024/1024 DiskSize, 
+                               SUM(fs.bytes)/1024/1024 free_MB, 
+                               SUBSTR(df.file_name,1,35) Name_of_File 
+                        FROM dba_data_files df, dba_free_space fs 
+                        WHERE df.tablespace_name = fs.tablespace_name and df.tablespace_name != 'TESTTBS'
+                        GROUP BY SUBSTR(df.tablespace_name,1,15), 
+                                 SUBSTR(df.file_name,1,35), 
+                                 df.bytes
+                    )
+                ) 
+                GROUP BY tablespace, free_mb
+                ORDER BY tablespace asc;
+            ");
+
+                    OdbcDataReader r = _dbCompareSqlSysRTDBReader.ExecuteReaderODBCSysRTDB();
+
+                    if (r.HasRows)
+                        AddLog(LogType.INFO, "Executing select data count from RTDB");
+
+                    StringBuilder sb = new StringBuilder();
+                    sb.AppendLine("*RTDB*");
+                    sb.AppendLine("---------------------------------------------");
+                    //sb.AppendLine(string.Format("| {0,-15} | {1,-15} | {2,-15} |",
+                    //    "Tablespace", "Usage Disk", "Free Disk"));
+                    //sb.AppendLine("---------------------------------------------");
+
+                    while (r.Read())
+                    {
+                        string checkfreesize = r["DiskFree"]?.ToString().Trim();
+                        string diskSize = "";
+                        string tablespace = "";
+                        string diskUsage = "";
+                        string diskFree = "";
+
+                        double checksize = Convert.ToDouble(checkfreesize);
+                        checkfreesize = "";
+
+                        string checktable = r["TableSpaceName"].ToString();
+                        if (checksize < 500) //for debug only use 5000, for production use 100
+                        {
+                            if (checktable == "SYSSUB" && checksize < 100)
+                            {
+                                tablespace = r["TableSpaceName"].ToString();
+                                diskSize = r["DiskSize"].ToString();
+                                diskUsage = r["DiskUsage"].ToString();
+                                diskFree = r["DiskFree"].ToString();
+                                sb.AppendLine($"*{tablespace}*");
+                                sb.AppendLine($"Size : {diskSize} MB");
+                                sb.AppendLine($"Used Size : {diskUsage} MB");
+                                sb.AppendLine($"*Free Size : {diskFree} MB*");
+                                sb.AppendLine($" ");
+                            }
+                            else
+                            {
+                                tablespace = r["TableSpaceName"].ToString();
+                                diskSize = r["DiskSize"].ToString();
+                                diskUsage = r["DiskUsage"].ToString();
+                                diskFree = r["DiskFree"].ToString();
+                                sb.AppendLine($"*{tablespace}*");
+                                sb.AppendLine($"Size : {diskSize} MB");
+                                sb.AppendLine($"Used Size : {diskUsage} MB");
+                                sb.AppendLine($"*Free Size : {diskFree} MB*");
+                                sb.AppendLine($" ");
+                            }
+                            _querySetDBSysRTDB = sb.ToString();
+                        }
+                        else
+                        {
+
+                        }
+                        //string percentage = (r["Percentage"].ToString() + "%").PadLeft(10);
+                    }
+                }
+                catch (Exception e)
+                {
+                    AddLog(LogType.INFO, "Error sys RTDB: " + e.Message);
+                }
+            }
+        }
+
+        public void GetSysDBFO()
+        {
+            lock (_dbCompareSqlSysDBFOReader)
+            {
+                try
+                {
+                    _dbCompareSqlSysDBFOReader.PrepareOdbcStatementDBSysDBFO(@"
+                SELECT tablespace AS TableSpaceName, 
+                       SUM(disksize) AS DiskSize, 
+                       ROUND((SUM(disksize) - free_mb),2) AS DiskUsage, 
+                       ROUND(free_mb, 2) AS DiskFree,  
+                       ROUND((free_mb / SUM(disksize)) * 100, 2) AS Percentage 
+                FROM (
+                    SELECT tablespace, disksize, free_mb, name_of_file 
+                    FROM (
+                        SELECT SUBSTR(df.tablespace_name,1,15) tablespace,
+                               df.bytes/1024/1024 DiskSize, 
+                               SUM(fs.bytes)/1024/1024 free_MB, 
+                               SUBSTR(df.file_name,1,35) Name_of_File 
+                        FROM dba_data_files df, dba_free_space fs 
+                        WHERE df.tablespace_name = fs.tablespace_name 
+                        GROUP BY SUBSTR(df.tablespace_name,1,15), 
+                                 SUBSTR(df.file_name,1,35), 
+                                 df.bytes
+                    )
+                ) 
+                GROUP BY tablespace, free_mb
+                ORDER BY tablespace asc;
+            ");
+
+                    OdbcDataReader r = _dbCompareSqlSysDBFOReader.ExecuteReaderODBCSysDBFO();
+
+                    if (r.HasRows)
+                        AddLog(LogType.INFO, "Executing select data count from DB DBFO S21");
+
+                    StringBuilder sb = new StringBuilder();
+                    sb.AppendLine("*DBFO S21*");
+                    sb.AppendLine("---------------------------------------------");
+                    //sb.AppendLine(string.Format("| {0,-15} | {1,-15} | {2,-15} |",
+                    //    "Tablespace", "Usage Disk", "Free Disk"));
+                    //sb.AppendLine("---------------------------------------------");
+
+                    while (r.Read())
+                    {
+                        string checkfreesize = r["DiskFree"]?.ToString().Trim();
+                        string diskSize = "";
+                        string tablespace = "";
+                        string diskUsage = "";
+                        string diskFree = "";
+
+                        double checksize = Convert.ToDouble(checkfreesize);
+                        checkfreesize = "";
+
+                        string checktable = r["TableSpaceName"].ToString();
+                        if (checksize < 500) //for debug only use 5000, for production use 100
+                        {
+                            if (checktable == "SYSSUB" && checksize < 100)
+                            {
+                                tablespace = r["TableSpaceName"].ToString();
+                                diskSize = r["DiskSize"].ToString();
+                                diskUsage = r["DiskUsage"].ToString();
+                                diskFree = r["DiskFree"].ToString();
+                                sb.AppendLine($"*{tablespace}*");
+                                sb.AppendLine($"Size : {diskSize} MB");
+                                sb.AppendLine($"Used Size : {diskUsage} MB");
+                                sb.AppendLine($"*Free Size : {diskFree} MB*");
+                                sb.AppendLine($" ");
+                            }
+                            else
+                            {
+                                tablespace = r["TableSpaceName"].ToString();
+                                diskSize = r["DiskSize"].ToString();
+                                diskUsage = r["DiskUsage"].ToString();
+                                diskFree = r["DiskFree"].ToString();
+                                sb.AppendLine($"*{tablespace}*");
+                                sb.AppendLine($"Size : {diskSize} MB");
+                                sb.AppendLine($"Used Size : {diskUsage} MB");
+                                sb.AppendLine($"*Free Size : {diskFree} MB*");
+                                sb.AppendLine($" ");
+                            }
+                            _querySetDBSysDBFO = sb.ToString();
+                        }
+                        else
+                        { 
+                        
+                        }
+                        //string percentage = (r["Percentage"].ToString() + "%").PadLeft(10);
+                    }
+                }
+                catch (Exception e)
+                {
+                    AddLog(LogType.INFO, "Error sys DBFO s21: " + e.Message);
+                }
+            }
+        }
+
+        public void GetSysDBLEDGER()
+        {
+            lock (_dbCompareSqlSysLedgerReader)
+            {
+                try
+                {
+                    _dbCompareSqlSysLedgerReader.PrepareOdbcStatementDBSysLedger(@"
+                SELECT tablespace AS TableSpaceName, 
+                       SUM(disksize) AS DiskSize, 
+                       ROUND((SUM(disksize) - free_mb),2) AS DiskUsage, 
+                       ROUND(free_mb, 2) AS DiskFree,  
+                       ROUND((free_mb / SUM(disksize)) * 100, 2) AS Percentage 
+                FROM (
+                    SELECT tablespace, disksize, free_mb, name_of_file 
+                    FROM (
+                        SELECT SUBSTR(df.tablespace_name,1,15) tablespace,
+                               df.bytes/1024/1024 DiskSize, 
+                               SUM(fs.bytes)/1024/1024 free_MB, 
+                               SUBSTR(df.file_name,1,35) Name_of_File 
+                        FROM dba_data_files df, dba_free_space fs 
+                        WHERE df.tablespace_name = fs.tablespace_name 
+                        GROUP BY SUBSTR(df.tablespace_name,1,15), 
+                                 SUBSTR(df.file_name,1,35), 
+                                 df.bytes
+                    )
+                ) 
+                GROUP BY tablespace, free_mb
+                ORDER BY tablespace asc;
+            ");
+
+                    OdbcDataReader r = _dbCompareSqlSysLedgerReader.ExecuteReaderODBCSysLedger();
+
+                    if (r.HasRows)
+                        AddLog(LogType.INFO, "Executing select data count from DB LEDGER");
+
+                    StringBuilder sb = new StringBuilder();
+                    sb.AppendLine(" ");
+                    sb.AppendLine("*DB LEDGER S21*");
+                    sb.AppendLine("---------------------------------------------");
+                    //sb.AppendLine(string.Format("| {0,-15} | {1,-15} | {2,-15} |",
+                    //    "Tablespace", "Usage Disk", "Free Disk"));
+                    //sb.AppendLine("---------------------------------------------");
+
+                    while (r.Read())
+                    {
+                        string checkfreesize = r["DiskFree"]?.ToString().Trim();
+                        string diskSize = "";
+                        string tablespace = "";
+                        string diskUsage = "";
+                        string diskFree = "";
+
+                        double checksize = Convert.ToDouble(checkfreesize);
+                        checkfreesize = "";
+
+                        string checktable = r["TableSpaceName"].ToString();
+                        if (checksize < 500) //for debug only use 5000, for production use 100
+                        {
+                            if (checktable == "SYSSUB" && checksize < 100)
+                            {
+                                tablespace = r["TableSpaceName"].ToString();
+                                diskSize = r["DiskSize"].ToString();
+                                diskUsage = r["DiskUsage"].ToString();
+                                diskFree = r["DiskFree"].ToString();
+                                sb.AppendLine($"*{tablespace}*");
+                                sb.AppendLine($"Size : {diskSize} MB");
+                                sb.AppendLine($"Used Size : {diskUsage} MB");
+                                sb.AppendLine($"Free Size : {diskFree} MB");
+                                sb.AppendLine($" ");
+                            }
+                            else 
+                            {
+                                tablespace = r["TableSpaceName"].ToString();
+                                diskSize = r["DiskSize"].ToString();
+                                diskUsage = r["DiskUsage"].ToString();
+                                diskFree = r["DiskFree"].ToString();
+                                sb.AppendLine($"*{tablespace}*");
+                                sb.AppendLine($"Size : {diskSize} MB");
+                                sb.AppendLine($"Used Size : {diskUsage} MB");
+                                sb.AppendLine($"*Free Size : {diskFree} MB*");
+                                sb.AppendLine($" ");
+                            }
+                            _querySetDBSysLedger = sb.ToString();
+                        }
+                        else
+                        {
+
+                        }
+                        //string percentage = (r["Percentage"].ToString() + "%").PadLeft(10);
+                    }
+                }
+                catch (Exception e)
+                {
+                    AddLog(LogType.INFO, "Error sys DBFO s21: " + e.Message);
+                }
+            }
+        }
+
+        //
 
         //API Official Function
         private void createApi()
@@ -792,22 +1459,33 @@ namespace WA_Send_API.Function
             _formattedDateTime = _currentDateTime.ToString("dddd, dd MMMM yyyy HH:mm:ss");
 
             var string1 = "";
+            var soundFilePath = "";
 
             if (statusCheckPreOUCH > 0)
             {
                 string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine  + "Preopening Status Order are CLEARED with Total: " + System.Environment.NewLine + "Open Order " + _OrderStatusPreop_Open_OUCH + " rows." + System.Environment.NewLine + "Rejected Order " + _OrderStatusPreop_Reject_OUCH + " rows";
+                soundFilePath = Path.Combine(Directory.GetCurrentDirectory(), "Sound", "PreopClear.wav");
             }
             else if (statusCheckPre <= 0)
             {
                 string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine  + "Preopening Status Order are ERROR with Total: " + System.Environment.NewLine + "Open Order " + _OrderStatusPreop_Open_OUCH + " rows." + System.Environment.NewLine + "Rejected Order " + _OrderStatusPreop_Reject_OUCH + " rows";
+                soundFilePath = Path.Combine(Directory.GetCurrentDirectory(), "Sound", "PreopAlert.wav");
             }
 
             _querySetPreop = string1;
 
+            SoundPlayer player = new SoundPlayer(soundFilePath);
+
             //AddLog(LogType.INFO, _querySet.ToString());
+
             //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetPreop);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6281213076997", _querySetPreop);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetPreop);
+
+            await PlaySoundAsync(player);
+            
+            //await System.Threading.Tasks.Task.Run(() => player.Play());
+
 
             //"120363195609109582"
         }
@@ -819,49 +1497,58 @@ namespace WA_Send_API.Function
             _formattedDateTime = _currentDateTime.ToString("dddd, dd MMMM yyyy HH:mm:ss");
 
             var string1 = "";
+            var soundFilePath = "";
 
             if (statusCheckOUCH < 5)
             {
-                string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "Opening Status Order are CLEARED with Total : " + System.Environment.NewLine + "Basket Order " + _OrderstatusOpening_Open + " rows." + System.Environment.NewLine + "Rejected Order " + _OrderstatusOpening_Reject + " rows";
+                string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "Opening Status Order are CLEARED with Total : " + System.Environment.NewLine + "Basket Order " + _OrderstatusOpening_Open_OUCH + " rows." + System.Environment.NewLine + "Rejected Order " + _OrderstatusOpening_Reject_OUCH + " rows";
+                soundFilePath = Path.Combine(Directory.GetCurrentDirectory(), "Sound", "OpenClear.wav");
             }
             else if (statusCheckOUCH > 10)
             {
-                string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "Opening Status Order are ERROR with Total : " + System.Environment.NewLine + "Basket Order " + _OrderstatusOpening_Open + " rows." + System.Environment.NewLine + "Rejected Order " + _OrderstatusOpening_Reject + " rows";
+                string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "Opening Status Order are ERROR with Total : " + System.Environment.NewLine + "Basket Order " + _OrderstatusOpening_Open_OUCH + " rows." + System.Environment.NewLine + "Rejected Order " + _OrderstatusOpening_Reject_OUCH + " rows";
+                soundFilePath = Path.Combine(Directory.GetCurrentDirectory(), "Sound", "PreopAlert.wav");
             }
 
             _querySetOpen = string1;
+
+            SoundPlayer player = new SoundPlayer(soundFilePath);
 
             //AddLog(LogType.INFO, _querySet.ToString());
             //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetOpen);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6281213076997", _querySetOpen);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetOpen);
+
+            await PlaySoundAsync(player);
+
             //"120363195609109582"
-        }
-
-        public async void GetApiShort()
-        {
-
-
-            _currentDateTime = DateTime.Now;
-            _formattedDateTime = _currentDateTime.ToString("dddd, dd MMMM yyyy HH:mm:ss");
-
-
-            _querySetShort = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "*FIX5*" + System.Environment.NewLine + "Short ClientID = " + _ClientIDShort + System.Environment.NewLine + "StockID = " + _StockIDShort + System.Environment.NewLine + "Total Short = " + _TotalShort;
-            //AddLog(LogType.INFO, _querySet.ToString());
-
-            //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetShort);
-            //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetShort);
         }
 
         public async void GetApiShortOUCH()
         {
+            var soundFilePath = "";
             _currentDateTime = DateTime.Now;
             _formattedDateTime = _currentDateTime.ToString("dddd, dd MMMM yyyy HH:mm:ss");
 
             _querySetShort = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "Short ClientID = " + _ClientIDShortOUCH + System.Environment.NewLine + "StockID = " + _StockIDShortOUCH + System.Environment.NewLine + "Total Short = " + _TotalShortOUCH;
 
-            //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetShort);
-            await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetShort);
+            if (statusCheckShort == 1)
+            {
+                
+                soundFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Sound", "PreopAlert.wav");
+
+                if (File.Exists(soundFilePath))
+                {
+                    SoundPlayer player = new SoundPlayer(soundFilePath);
+                    //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetShort);
+                    await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetShort);
+                    await PlaySoundAsync(player);
+                }
+                else
+                {
+                    AddLog(LogType.ERROR, "Sound file not found: " + soundFilePath);
+                }
+            }
         }
 
         public async void GetApiOrderCheck()
@@ -882,19 +1569,51 @@ namespace WA_Send_API.Function
 
         }
 
-        public async void GetApiDbCompare()
+        //public async void GetApiDbCompare()
+        //{
+        //    _currentDateTime = DateTime.Now;
+        //    _formattedDateTime = _currentDateTime.ToString("dddd, dd MMMM yyyy HH:mm:ss");
+        //
+        //    var string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "*S21*" + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| *Type*   |  *DBBO*    |     *DBFO*     | " + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| CC      |  " + _dbBOCountCCS21 + "    |  " + _dbFOCountCC + "      |" + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| CS      |  " + _dbBOCountCSS21 + "    |  " + _dbFOCountCS + "      |  " + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| Client |  " + _dbBOCountClientS21 + "    |  " + _dbFOCountClient + "      |  " + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| User   |  " + _dbBOCountUserS21 + "    |  " + _dbFOCountUser + "      |  " + System.Environment.NewLine + "---------------------------------------------------------------";
+        //    var string2 = System.Environment.NewLine    + System.Environment.NewLine + System.Environment.NewLine + "*OUCH*" + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| *Type*   |  *DBBridge*    |  *DBFO* | " + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| CC      |  " + _dbBridgeCountCC2 + "    |  " + _dbBridgeCountCCOUCH + "      |" + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| CS      |  " + _dbBridgeCountCS + "    |  " + _dbBridgeCountCSOUCH + "      |  " + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| Client |  " + _dbBridgeCountClient + "    |  " + _dbBridgeCountClientOUCH + "      |  " + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| User   |  " + _dbBridgeCountUser2 + "    |  " + _dbBridgeCountUserOUCH + "      |  " + System.Environment.NewLine + "---------------------------------------------------------------";
+        //
+        //    _querySetDBCompare = string1 + string2;
+        //
+        //    await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetDBCompare);
+        //    //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetDBCompare);
+        //    //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6281297037370", _querySetDBCompare);
+        //}
+
+        public async void GetEarlyData()
+        { 
+            _currentDateTime = DateTime.Now;
+            _formattedDateTime = _currentDateTime.ToString("dddd, dd MMMM yyyy HH:mm:ss");
+            //var string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "Total Count S21" + System.Environment.NewLine + System.Environment.NewLine + "ClientCash : " + _dbBOCountCCS21 + System.Environment.NewLine + "CountStock : " + _dbBOCountCSS21 + System.Environment.NewLine + "User : " + _dbBOCountUserS21 + System.Environment.NewLine + "Client :" + _dbBOCountClientS21 + System.Environment.NewLine + System.Environment.NewLine + "------------------------------------------" + System.Environment.NewLine + System.Environment.NewLine;
+            var string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "Total Count S21" + System.Environment.NewLine + System.Environment.NewLine + "ClientCash : " + _dbFOCountCC    + System.Environment.NewLine + "CountStock : " + _dbFOCountCS    + System.Environment.NewLine + "User : " + _dbFOCountUser    + System.Environment.NewLine + "Client :" + _dbFOCountClient    + System.Environment.NewLine + System.Environment.NewLine + "------------------------------------------" + System.Environment.NewLine + System.Environment.NewLine;
+            var string2 = "Total Count Trus" + System.Environment.NewLine + System.Environment.NewLine + "ClientCash : " + _dbBridgeCountCCOUCH + System.Environment.NewLine + "ClientStock : " + _dbBridgeCountCSOUCH + System.Environment.NewLine + "User : " + _dbBridgeCountUserOUCH + System.Environment.NewLine + "Client : " + _dbBridgeCountClientOUCH;
+
+            _querySetDBCompare = string1 + string2;
+            //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetDBCompare);
+            await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetDBCompare);
+        }
+
+        public async void GetDBSys()
         {
+            
             _currentDateTime = DateTime.Now;
             _formattedDateTime = _currentDateTime.ToString("dddd, dd MMMM yyyy HH:mm:ss");
 
-            var string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "*S21*" + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| *Type*   |  *DBBO*    |     *DBFO*     | " + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| CC      |  " + _dbBOCountCCS21 + "    |  " + _dbFOCountCC + "      |" + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| CS      |  " + _dbBOCountCSS21 + "    |  " + _dbFOCountCS + "      |  " + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| Client |  " + _dbBOCountClientS21 + "    |  " + _dbFOCountClient + "      |  " + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| User   |  " + _dbBOCountUserS21 + "    |  " + _dbFOCountUser + "      |  " + System.Environment.NewLine + "---------------------------------------------------------------";
-            var string2 = System.Environment.NewLine    + System.Environment.NewLine + System.Environment.NewLine + "*OUCH*" + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| *Type*   |  *DBBridge*    |  *DBFO* | " + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| CC      |  " + _dbBridgeCountCC2 + "    |  " + _dbBridgeCountCCOUCH + "      |" + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| CS      |  " + _dbBridgeCountCS + "    |  " + _dbBridgeCountCSOUCH + "      |  " + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| Client |  " + _dbBridgeCountClient + "    |  " + _dbBridgeCountClientOUCH + "      |  " + System.Environment.NewLine + "---------------------------------------------------------------------------" + System.Environment.NewLine + "| User   |  " + _dbBridgeCountUser2 + "    |  " + _dbBridgeCountUserOUCH + "      |  " + System.Environment.NewLine + "---------------------------------------------------------------";
+            var string1 = "*"+_formattedDateTime.ToString()+"*" + System.Environment.NewLine + System.Environment.NewLine + System.Environment.NewLine + "*Below on these list is tablespace have less than 500MB free space*" + System.Environment.NewLine + System.Environment.NewLine;
 
-            _querySetDBCompare = string1;
+            //_querySetDBSys = string1;
 
-            //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetDBCompare);
-            await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetDBCompare);
-            await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6281297037370", _querySetDBCompare);
+            //var string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "*DBFO S21*" + System.Environment.NewLine + "-------------------------------------------------------------------------------------" + System.Environment.NewLine + "| *Tablespace*   |  *Size Disk*             |  *Usage Disk*             |  *Free Disk*             |" + System.Environment.NewLine + "-------------------------------------------------------------------------------------"
+            //              + System.Environment.NewLine  + _ServerDBFO + "    |  " + _SizeDBFO + "    |  " + _InuseDBFO + "    |  " + _FreeDBFO + "    |   " ;
+
+            _querySetDBSys = string1 + _querySetDBSysDBFO +  _querySetDBSysLedger + System.Environment.NewLine + _querySetDBSysAODB + System.Environment.NewLine + _querySetDBSysRTDB + System.Environment.NewLine + _querySetDBSysOTDB + System.Environment.NewLine + _querySetDBSysDBBridge;
+
+            //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetDBSys);
+            await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetDBSys);
         }
 
         #region Process BackOffice Data
@@ -1066,6 +1785,15 @@ namespace WA_Send_API.Function
         {
             lock (_logQueue)
                 _logQueue.Enqueue(logBase);
+        }
+
+        public async Task PlaySoundAsync(SoundPlayer player)
+        {
+            TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
+            player.SoundLocation = player.SoundLocation; 
+            player.LoadCompleted += (sender, e) => tcs.SetResult(true);
+            player.Play();
+            await tcs.Task; // Wait for the sound to complete
         }
 
         public void ProcessLogQueue()
