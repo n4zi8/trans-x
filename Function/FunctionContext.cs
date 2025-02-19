@@ -600,37 +600,24 @@ namespace WA_Send_API.Function
                         statusCheckShort = 0;
                     }
 
+                    StringBuilder sb = new StringBuilder();
+
                     while (r.Read())
                     {
-                        ClientShortModel o = new ClientShortModel
-                        {
-                            CustID = r["CUSTID"].ToString().Trim(),
-                            StockCode = r["STOCKCODE"].ToString().Trim(),
-                            Short = r["SHORT"].ToString().Trim()
-                        };
+                        string AccountCode = "";
+                        string StockCode = "";
+                        string ShortValue = "";
 
-                        QueueFundInOutData(o);
-                        System.Threading.Interlocked.Increment(ref QueueCount);
+                        AccountCode = r["CUSTID"].ToString();
+                        StockCode = r["STOCKCODE"].ToString();
+                        ShortValue = r["SHORT"].ToString();
 
-                        // Sanitize values before logging
-                        string sanitizedCustID = Regex.Replace(o.CustID, @"[\\/:*?""<>|]", "_");
-                        string sanitizedStockCode = Regex.Replace(o.StockCode, @"[\\/:*?""<>|]", "_");
-                        string sanitizedShort = Regex.Replace(o.Short, @"[\\/:*?""<>|]", "_");
+                        sb.AppendLine($"Short ClientID : {AccountCode}");
+                        sb.AppendLine($"StockID : {StockCode}");
+                        sb.AppendLine($"Total Short : {ShortValue}");
+                        sb.AppendLine(" ");
 
-                        AddLog(LogType.INFO, $"--> Send To WA Client Short: ClientID = {sanitizedCustID} | StockID = {sanitizedStockCode} | Short = {sanitizedShort}");
-
-                        _ClientIDShortOUCH = o.CustID;
-                        _StockIDShortOUCH = o.StockCode;
-                        _TotalShortOUCH = o.Short;
-
-                        if (!string.IsNullOrEmpty(o.CustID) && !string.IsNullOrEmpty(o.StockCode) && !string.IsNullOrEmpty(o.Short))
-                        {
-                           // GetApiShortOUCH();
-                        }
-                        else
-                        {
-                            MessageBox.Show("Error: Null value detected in API call");
-                        }
+                        _querySetShort = sb.ToString();
                     }
                 }
                 catch (Exception e)
@@ -1454,7 +1441,6 @@ namespace WA_Send_API.Function
         //API UnOfficial Function
         public async void GetApiPreop()
         {
-
             _currentDateTime = DateTime.Now;
             _formattedDateTime = _currentDateTime.ToString("dddd, dd MMMM yyyy HH:mm:ss");
 
@@ -1475,14 +1461,15 @@ namespace WA_Send_API.Function
             _querySetPreop = string1;
 
             SoundPlayer player = new SoundPlayer(soundFilePath);
-
+			
+			await PlaySoundAsync(player);
             //AddLog(LogType.INFO, _querySet.ToString());
 
             //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetPreop);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6281213076997", _querySetPreop);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetPreop);
 
-            await PlaySoundAsync(player);
+            
             
             //await System.Threading.Tasks.Task.Run(() => player.Play());
 
@@ -1514,12 +1501,14 @@ namespace WA_Send_API.Function
 
             SoundPlayer player = new SoundPlayer(soundFilePath);
 
+            await PlaySoundAsync(player);
+
             //AddLog(LogType.INFO, _querySet.ToString());
             //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetOpen);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6281213076997", _querySetOpen);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetOpen);
 
-            await PlaySoundAsync(player);
+            
 
             //"120363195609109582"
         }
@@ -1530,7 +1519,9 @@ namespace WA_Send_API.Function
             _currentDateTime = DateTime.Now;
             _formattedDateTime = _currentDateTime.ToString("dddd, dd MMMM yyyy HH:mm:ss");
 
-            _querySetShort = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "Short ClientID = " + _ClientIDShortOUCH + System.Environment.NewLine + "StockID = " + _StockIDShortOUCH + System.Environment.NewLine + "Total Short = " + _TotalShortOUCH;
+            string queryshort = "";
+            queryshort = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + _querySetShort;
+
 
             if (statusCheckShort == 1)
             {
@@ -1540,9 +1531,9 @@ namespace WA_Send_API.Function
                 if (File.Exists(soundFilePath))
                 {
                     SoundPlayer player = new SoundPlayer(soundFilePath);
-                    //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetShort);
-                    await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetShort);
                     await PlaySoundAsync(player);
+                    //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetShort);
+                    await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", queryshort);
                 }
                 else
                 {

@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using System.Data.Odbc;
+using System.Web.WebSockets;
 
 namespace WA_Send_API.DataSql
 {
