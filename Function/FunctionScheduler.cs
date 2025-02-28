@@ -13,8 +13,8 @@ namespace WA_Send_API.Function
     public class FunctionScheduler
     {
         private bool _isNewStart = true;
-        private bool _isGetdataFIOdone, _isGetStatusPreopdone, _isGetStatusOpendone, _isGetShortdone, _isGetOrderdone, _isGetDBCompare, _isGetDBSysCheck;
-        private TimeSpan _timeSpanPreop, _timeSpanOpen, _timeSpanShort, _timeSpanOrder, _timeSpanDBcompare, _timeSpanDBSysCheck;
+        private bool _isGetdataFIOdone, _isGetStatusPreopdone, _isGetStatusOpendone, _isGetShortdone, _isGetOrderdone, _isGetDBCompare, _isGetDBSysCheck, _isGetShortdone2;
+        private TimeSpan _timeSpanPreop, _timeSpanOpen, _timeSpanShort, _timeSpanOrder, _timeSpanDBcompare, _timeSpanDBSysCheck, _timeSpanShort2;
 
         private DateTime _prevDate;
         private System.Timers.Timer _timer;
@@ -38,10 +38,15 @@ namespace WA_Send_API.Function
             this._timer.Start();
             _timeSpanPreop = TimeSpan.Parse("08:45:02");
             _timeSpanOpen = TimeSpan.Parse("09:00:02");
-            _timeSpanShort = TimeSpan.Parse("16:10:00");
+            
             _timeSpanOrder = TimeSpan.Parse("04:10:00");
             _timeSpanDBcompare = TimeSpan.Parse("02:00:00");
             _timeSpanDBSysCheck = TimeSpan.Parse("01:00:00");
+            
+            //short check run every closing session
+            _timeSpanShort = TimeSpan.Parse("12:00:00");
+            _timeSpanShort2 = TimeSpan.Parse("16:10:00");
+
             this._timer_Elapsed(null, null);
 
             //this._timer.Start(); //for test only
@@ -51,6 +56,8 @@ namespace WA_Send_API.Function
             //_timeSpanOpen       = TimeSpan.Parse("07:14:00");
             //_timeSpanShort      = TimeSpan.Parse("07:16:00");
             //_timeSpanDBSysCheck = TimeSpan.Parse("08:40:00");
+            //_timeSpanShort = TimeSpan.Parse("15:26:00");
+            //_timeSpanShort2 = TimeSpan.Parse("15:27:00");
             //this._timer_Elapsed(null, null);
         }
 
@@ -67,7 +74,7 @@ namespace WA_Send_API.Function
             if (this._prevDate < DateTime.Now.Date)
             {
                 this._prevDate = DateTime.Now;
-                this._isGetdataFIOdone = this._isGetStatusPreopdone = this._isGetStatusOpendone =this._isGetShortdone=this._isGetDBCompare = this._isGetDBSysCheck = this._isNewStart = false; 
+                this._isGetdataFIOdone = this._isGetStatusPreopdone = this._isGetStatusOpendone =this._isGetShortdone=this._isGetDBCompare = this._isGetDBSysCheck = this._isNewStart = this._isGetShortdone2 = false; 
             }
 
             /*
@@ -116,7 +123,7 @@ namespace WA_Send_API.Function
                 }
                 this._isGetStatusOpendone = true;
             }
-            if (_timeSpanShort <= now && !this._isGetShortdone)
+            if (_timeSpanShort <= now && !this._isGetShortdone )
             {
                 if (this._isNewStart && this._prevDate.TimeOfDay > _timeSpanShort)
                 {
@@ -134,6 +141,26 @@ namespace WA_Send_API.Function
 
                 }
                 this._isGetShortdone = true;
+            }
+
+            if (_timeSpanShort2 <= now && !this._isGetShortdone2)
+            {
+                if (this._isNewStart && this._prevDate.TimeOfDay > _timeSpanShort2)
+                {
+
+                }
+                else
+                {
+                    if (this._context.GetHolidayDate() == 1)
+                    {
+                        this._isGetShortdone2 = true;
+                        //this._context.GetClientShort();
+                        this._context.GetClientShortOUCH();
+                        this._context.GetApiShortOUCH();
+                    }
+
+                }
+                this._isGetShortdone2 = true;
             }
 
             if (_timeSpanOrder <= now && !this._isGetOrderdone)

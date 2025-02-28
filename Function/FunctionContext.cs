@@ -81,14 +81,7 @@ namespace WA_Send_API.Function
                          _querySetDBSysOTDB,
                          _querySetDBSysDBBridge
         ;
-
-
-        public string    _ServerAODB,         _InuseAODB,         _FreeAODB,            _SizeAODB,          _PercentageAODB,
-                         _ServerBRIDGE,       _InuseBRIDGE,       _FreeBRIDGE,          _SizeBRIDGE,        _PercentageBRIDGE,
-                         _ServerOTDB,         _InuseOTDB,         _FreeOTDB,            _SizeOTDB,          _PercentageOTDB,
-                         _ServerRTDB,         _InuseRTDB,         _FreeRTDB,            _SizeRTDB,          _PercentageRTDB,
-                         _ServerDBFO,         _InuseDBFO,         _FreeDBFO,            _SizeDBFO,          _PercentageDBFO,
-                         _ServerLEDGER,       _InuseLEDGER,       _FreeLEDGER,          _SizeLEDGER,        _PercentageLEDGER;
+        double checksize_aodb = 0.0, checksize_otdb = 0.0, checksize_rtdb = 0.0, checksize_bridge = 0.0, checksize_ledger = 0.0, checksize_s21 = 0.0;
 
         public int sCheckHoliday;
 
@@ -582,7 +575,7 @@ namespace WA_Send_API.Function
                         "        SELECT accountcode, productcode, " +
                         "        CASE WHEN Side NOT IN ('B','M') THEN COALESCE(remainvolume,ordervolume) ELSE 0 END AS WorkingSell, " +
                         "        CASE WHEN Side IN ('B','M') THEN 1 ELSE -1 END * COALESCE(tradevolume,0) AS tradevolume " +
-                        "        FROM tborder" +
+                        "        FROM tborder where boardcode != 'AV' " +
                         "    ) A GROUP BY A.accountcode, A.productcode " +
                         ") X GROUP BY X.accountcode, X.productcode " +
                         "HAVING SUM(X.openvol) + SUM(X.tradevolume) - SUM(COALESCE(X.WorkingSell,0)) < 0"
@@ -841,6 +834,8 @@ namespace WA_Send_API.Function
                         string diskFree = "";
 
                         double checksize = Convert.ToDouble(checkfreesize);
+                        checksize_aodb = checksize;
+
                         checkfreesize = "";
 
                         string checktable = r["TableSpaceName"].ToString();
@@ -937,6 +932,8 @@ namespace WA_Send_API.Function
                         string diskFree = "";
 
                         double checksize = Convert.ToDouble(checkfreesize);
+                        checksize_bridge = checksize;
+
                         checkfreesize = "";
 
                         string checktable = r["TableSpaceName"].ToString();
@@ -1033,6 +1030,8 @@ namespace WA_Send_API.Function
                         string diskFree = "";
 
                         double checksize = Convert.ToDouble(checkfreesize);
+                        checksize_otdb = checksize;
+
                         checkfreesize = "";
 
                         string checktable = r["TableSpaceName"].ToString();
@@ -1129,6 +1128,8 @@ namespace WA_Send_API.Function
                         string diskFree = "";
 
                         double checksize = Convert.ToDouble(checkfreesize);
+                        checksize_rtdb = checksize;
+
                         checkfreesize = "";
 
                         string checktable = r["TableSpaceName"].ToString();
@@ -1225,6 +1226,8 @@ namespace WA_Send_API.Function
                         string diskFree = "";
 
                         double checksize = Convert.ToDouble(checkfreesize);
+
+                        checksize_s21 = checksize;
                         checkfreesize = "";
 
                         string checktable = r["TableSpaceName"].ToString();
@@ -1322,6 +1325,7 @@ namespace WA_Send_API.Function
                         string diskFree = "";
 
                         double checksize = Convert.ToDouble(checkfreesize);
+                        checksize_ledger = checksize;
                         checkfreesize = "";
 
                         string checktable = r["TableSpaceName"].ToString();
@@ -1462,15 +1466,16 @@ namespace WA_Send_API.Function
 
             SoundPlayer player = new SoundPlayer(soundFilePath);
 			
-			await PlaySoundAsync(player);
+			
             //AddLog(LogType.INFO, _querySet.ToString());
 
             //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetPreop);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6281213076997", _querySetPreop);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetPreop);
+            
+            await PlaySoundAsync(player);
 
-            
-            
+
             //await System.Threading.Tasks.Task.Run(() => player.Play());
 
 
@@ -1501,14 +1506,13 @@ namespace WA_Send_API.Function
 
             SoundPlayer player = new SoundPlayer(soundFilePath);
 
-            await PlaySoundAsync(player);
 
             //AddLog(LogType.INFO, _querySet.ToString());
             //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetOpen);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6281213076997", _querySetOpen);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetOpen);
 
-            
+            await PlaySoundAsync(player);
 
             //"120363195609109582"
         }
@@ -1531,9 +1535,10 @@ namespace WA_Send_API.Function
                 if (File.Exists(soundFilePath))
                 {
                     SoundPlayer player = new SoundPlayer(soundFilePath);
-                    await PlaySoundAsync(player);
                     //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetShort);
                     await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", queryshort);
+
+                    await PlaySoundAsync(player);
                 }
                 else
                 {
@@ -1556,8 +1561,6 @@ namespace WA_Send_API.Function
             _querySetOrder = string1;
             //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetOrder);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetOrder);
-
-
         }
 
         //public async void GetApiDbCompare()
@@ -1594,14 +1597,19 @@ namespace WA_Send_API.Function
             _currentDateTime = DateTime.Now;
             _formattedDateTime = _currentDateTime.ToString("dddd, dd MMMM yyyy HH:mm:ss");
 
-            var string1 = "*"+_formattedDateTime.ToString()+"*" + System.Environment.NewLine + System.Environment.NewLine + System.Environment.NewLine + "*Below on these list is tablespace have less than 500MB free space*" + System.Environment.NewLine + System.Environment.NewLine;
+            var string1= "";
 
-            //_querySetDBSys = string1;
+            if (checksize_aodb > 500 && checksize_bridge > 500 && checksize_ledger > 500 && checksize_otdb > 500 && checksize_rtdb > 500 && checksize_s21 > 500)
+            {
+                string1 = "*" + _formattedDateTime.ToString() + "*" + System.Environment.NewLine + System.Environment.NewLine + System.Environment.NewLine + "*All tablespace have more than 500MB free space*";
+                _querySetDBSys = string1;
+            }
+            else
+            {
+                string1 = "*" + _formattedDateTime.ToString() + "*" + System.Environment.NewLine + System.Environment.NewLine + System.Environment.NewLine + "*Below on these list is tablespace have less than 500MB free space*" + System.Environment.NewLine + System.Environment.NewLine;
+                _querySetDBSys = string1 + _querySetDBSysDBFO + _querySetDBSysLedger + System.Environment.NewLine + _querySetDBSysAODB + System.Environment.NewLine + _querySetDBSysRTDB + System.Environment.NewLine + _querySetDBSysOTDB + System.Environment.NewLine + _querySetDBSysDBBridge;
+            }
 
-            //var string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "*DBFO S21*" + System.Environment.NewLine + "-------------------------------------------------------------------------------------" + System.Environment.NewLine + "| *Tablespace*   |  *Size Disk*             |  *Usage Disk*             |  *Free Disk*             |" + System.Environment.NewLine + "-------------------------------------------------------------------------------------"
-            //              + System.Environment.NewLine  + _ServerDBFO + "    |  " + _SizeDBFO + "    |  " + _InuseDBFO + "    |  " + _FreeDBFO + "    |   " ;
-
-            _querySetDBSys = string1 + _querySetDBSysDBFO +  _querySetDBSysLedger + System.Environment.NewLine + _querySetDBSysAODB + System.Environment.NewLine + _querySetDBSysRTDB + System.Environment.NewLine + _querySetDBSysOTDB + System.Environment.NewLine + _querySetDBSysDBBridge;
 
             //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetDBSys);
             await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetDBSys);
