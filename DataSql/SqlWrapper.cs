@@ -346,7 +346,7 @@ namespace WA_Send_API.DataSql
                 Console.WriteLine("Error preparing ODBC Statement : " + ex.Message);
                 throw;
             }
-        }
+        } 
 
 
 

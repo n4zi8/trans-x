@@ -40,7 +40,8 @@ namespace WA_Send_API.Function
             _timeSpanOpen = TimeSpan.Parse("09:00:02");
             
             _timeSpanOrder = TimeSpan.Parse("04:10:00");
-            _timeSpanDBcompare = TimeSpan.Parse("02:00:00");
+            //_timeSpanDBcompare = TimeSpan.Parse("02:00:00");
+            _timeSpanDBcompare = TimeSpan.Parse("09:01:00");
             _timeSpanDBSysCheck = TimeSpan.Parse("01:00:00");
             
             //short check run every closing session
@@ -218,7 +219,7 @@ namespace WA_Send_API.Function
                     {
                         this._isGetDBCompare = true;
                         //this._context.GetDBCompare();
-                        this._context.GetDBS21();
+                        //this._context.GetDBS21();
                         this._context.GetDBBridgeData();
                         this._context.GetEarlyData();
                     }

@@ -194,6 +194,7 @@ namespace WA_Send_API.Function
             }
         }
 
+        /*
         //DB BO Compared
         public void GetDBCompare()
         {
@@ -245,6 +246,7 @@ namespace WA_Send_API.Function
                 }
             }
         }
+        */
 
         public void GetDBS21()
         {
@@ -834,8 +836,6 @@ namespace WA_Send_API.Function
                         string diskFree = "";
 
                         double checksize = Convert.ToDouble(checkfreesize);
-                        checksize_aodb = checksize;
-
                         checkfreesize = "";
 
                         string checktable = r["TableSpaceName"].ToString();
@@ -866,10 +866,11 @@ namespace WA_Send_API.Function
                                 sb.AppendLine($" ");
                             }
                             _querySetDBSysAODB = sb.ToString();
+                            checksize_aodb = checksize;
                         }
                         else
                         {
-
+                            checksize_aodb = 501;
                         }
                         //string percentage = (r["Percentage"].ToString() + "%").PadLeft(10);
                     }
@@ -932,7 +933,7 @@ namespace WA_Send_API.Function
                         string diskFree = "";
 
                         double checksize = Convert.ToDouble(checkfreesize);
-                        checksize_bridge = checksize;
+                        
 
                         checkfreesize = "";
 
@@ -964,10 +965,11 @@ namespace WA_Send_API.Function
                                 sb.AppendLine($" ");
                             }
                             _querySetDBSysDBBridge = sb.ToString();
+                            checksize_bridge = checksize;
                         }
                         else
                         {
-
+                            checksize_bridge = 501;
                         }
                         //string percentage = (r["Percentage"].ToString() + "%").PadLeft(10);
                     }
@@ -1030,12 +1032,12 @@ namespace WA_Send_API.Function
                         string diskFree = "";
 
                         double checksize = Convert.ToDouble(checkfreesize);
-                        checksize_otdb = checksize;
+                        
 
                         checkfreesize = "";
 
                         string checktable = r["TableSpaceName"].ToString();
-                        if (checksize < 500) //for debug only use 5000, for production use 100
+                        if (checksize < 2500) //for debug only use 5000, for production use 100
                         {
                             if (checktable == "SYSSUB" && checksize < 100)
                             {
@@ -1062,10 +1064,11 @@ namespace WA_Send_API.Function
                                 sb.AppendLine($" ");
                             }
                             _querySetDBSysOTDB = sb.ToString();
+                            checksize_otdb = checksize;
                         }
                         else
                         {
-
+                            checksize_otdb = 501;
                         }
                         //string percentage = (r["Percentage"].ToString() + "%").PadLeft(10);
                     }
@@ -1128,7 +1131,7 @@ namespace WA_Send_API.Function
                         string diskFree = "";
 
                         double checksize = Convert.ToDouble(checkfreesize);
-                        checksize_rtdb = checksize;
+                        
 
                         checkfreesize = "";
 
@@ -1160,10 +1163,11 @@ namespace WA_Send_API.Function
                                 sb.AppendLine($" ");
                             }
                             _querySetDBSysRTDB = sb.ToString();
+                            checksize_rtdb = checksize;
                         }
                         else
                         {
-
+                            checksize_rtdb = 501;
                         }
                         //string percentage = (r["Percentage"].ToString() + "%").PadLeft(10);
                     }
@@ -1226,8 +1230,7 @@ namespace WA_Send_API.Function
                         string diskFree = "";
 
                         double checksize = Convert.ToDouble(checkfreesize);
-
-                        checksize_s21 = checksize;
+                        
                         checkfreesize = "";
 
                         string checktable = r["TableSpaceName"].ToString();
@@ -1258,10 +1261,11 @@ namespace WA_Send_API.Function
                                 sb.AppendLine($" ");
                             }
                             _querySetDBSysDBFO = sb.ToString();
+                            checksize_s21 = checksize;
                         }
                         else
-                        { 
-                        
+                        {
+                            checksize_s21 = 501;
                         }
                         //string percentage = (r["Percentage"].ToString() + "%").PadLeft(10);
                     }
@@ -1325,7 +1329,7 @@ namespace WA_Send_API.Function
                         string diskFree = "";
 
                         double checksize = Convert.ToDouble(checkfreesize);
-                        checksize_ledger = checksize;
+                        
                         checkfreesize = "";
 
                         string checktable = r["TableSpaceName"].ToString();
@@ -1356,10 +1360,11 @@ namespace WA_Send_API.Function
                                 sb.AppendLine($" ");
                             }
                             _querySetDBSysLedger = sb.ToString();
+                            checksize_ledger = checksize;
                         }
                         else
                         {
-
+                            checksize_ledger = 501;
                         }
                         //string percentage = (r["Percentage"].ToString() + "%").PadLeft(10);
                     }
@@ -1583,12 +1588,12 @@ namespace WA_Send_API.Function
             _currentDateTime = DateTime.Now;
             _formattedDateTime = _currentDateTime.ToString("dddd, dd MMMM yyyy HH:mm:ss");
             //var string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "Total Count S21" + System.Environment.NewLine + System.Environment.NewLine + "ClientCash : " + _dbBOCountCCS21 + System.Environment.NewLine + "CountStock : " + _dbBOCountCSS21 + System.Environment.NewLine + "User : " + _dbBOCountUserS21 + System.Environment.NewLine + "Client :" + _dbBOCountClientS21 + System.Environment.NewLine + System.Environment.NewLine + "------------------------------------------" + System.Environment.NewLine + System.Environment.NewLine;
-            var string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "Total Count S21" + System.Environment.NewLine + System.Environment.NewLine + "ClientCash : " + _dbFOCountCC    + System.Environment.NewLine + "CountStock : " + _dbFOCountCS    + System.Environment.NewLine + "User : " + _dbFOCountUser    + System.Environment.NewLine + "Client :" + _dbFOCountClient    + System.Environment.NewLine + System.Environment.NewLine + "------------------------------------------" + System.Environment.NewLine + System.Environment.NewLine;
-            var string2 = "Total Count Trus" + System.Environment.NewLine + System.Environment.NewLine + "ClientCash : " + _dbBridgeCountCCOUCH + System.Environment.NewLine + "ClientStock : " + _dbBridgeCountCSOUCH + System.Environment.NewLine + "User : " + _dbBridgeCountUserOUCH + System.Environment.NewLine + "Client : " + _dbBridgeCountClientOUCH;
+            //var string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "Total Count S21" + System.Environment.NewLine + System.Environment.NewLine + "ClientCash : " + _dbFOCountCC    + System.Environment.NewLine + "CountStock : " + _dbFOCountCS    + System.Environment.NewLine + "User : " + _dbFOCountUser    + System.Environment.NewLine + "Client :" + _dbFOCountClient    + System.Environment.NewLine + System.Environment.NewLine + "------------------------------------------" + System.Environment.NewLine + System.Environment.NewLine;
+            var string1 = _formattedDateTime.ToString() + System.Environment.NewLine + System.Environment.NewLine + "Total Count Order" + System.Environment.NewLine + "ClientCash : " + _dbBridgeCountCCOUCH + System.Environment.NewLine + "ClientStock : " + _dbBridgeCountCSOUCH + System.Environment.NewLine + "User : " + _dbBridgeCountUserOUCH + System.Environment.NewLine + "Client : " + _dbBridgeCountClientOUCH;
 
-            _querySetDBCompare = string1 + string2;
-            //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetDBCompare);
-            await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetDBCompare);
+            _querySetDBCompare = string1;
+            await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "6287845016747", _querySetDBCompare);
+            //await RestHelper.Post("hsfvXBi91oPj2QHMuY8I", "6281110000665", "120363195609109582", _querySetDBCompare);
         }
 
         public async void GetDBSys()

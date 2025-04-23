@@ -10,7 +10,7 @@ namespace WA_Send_API.DataSql
 {
     public class ConnectionStr
     {
-        private const string connectionString = "Data Source=10.1.2.100;Initial Catalog=S21Plus_CP;USER ID=s21+;Password=diehards21+;MultipleActiveResultSets=true;";
+        //private const string connectionString = "Data Source=10.1.2.100;Initial Catalog=S21Plus_CP;USER ID=s21+;Password=diehards21+;MultipleActiveResultSets=true;";
         //private const string connectionString2 = @"DSN=tibero_trusRT;UID=CP_REMOTE;PWD=CP_REMOTE;";
         private const string connectionString3 = @"DSN=tibero_trusRTOUCH;UID=CP_REMOTE;PWD=cpremote123prod;";
 
@@ -25,7 +25,7 @@ namespace WA_Send_API.DataSql
         public static bool ProbeConnectionString()
         {
             bool result = false;
-            SqlConnectionStringBuilder csBuilder = new SqlConnectionStringBuilder(connectionString) { ConnectTimeout = 3 };
+           // SqlConnectionStringBuilder csBuilder = new SqlConnectionStringBuilder(connectionString) { ConnectTimeout = 3 };
             //OdbcConnectionStringBuilder odbcBuilder = new OdbcConnectionStringBuilder(connectionString2) ;
             OdbcConnectionStringBuilder odbcBuilder2 = new OdbcConnectionStringBuilder(connectionString3);
 
@@ -39,7 +39,7 @@ namespace WA_Send_API.DataSql
 
 
 
-            SqlConnection connection = new SqlConnection(csBuilder.ToString());
+           // SqlConnection connection = new SqlConnection(csBuilder.ToString());
             //OdbcConnection connection2 = new OdbcConnection(odbcBuilder.ToString());
             OdbcConnection connection3 = new OdbcConnection(odbcBuilder2.ToString());
             OdbcConnection connection5 = new OdbcConnection(odbcBuilder2.ToString());
@@ -55,7 +55,7 @@ namespace WA_Send_API.DataSql
 
             try
             {
-                connection.Open();
+              //  connection.Open();
                 //connection2.Open();
                 connection3.Open();
                 connection5.Open();
@@ -72,7 +72,7 @@ namespace WA_Send_API.DataSql
             catch { result = false; }
             finally 
             { 
-                connection.Dispose();
+               // connection.Dispose();
                 //connection2.Dispose();
                 connection3.Dispose();
                 connection5.Dispose();
